@@ -1,0 +1,77 @@
+// Global ignore
+WHITESPACE = _{ " " | "\t" | newline }
+COMMENT    = _{ "//" ~ ANY ~ newline }
+
+// Char
+alpha      = { 'a'..'z' | 'A'..'Z' }
+digit      = { '0'..'9' }
+notdigit   = _{ !digit }
+newline    = _{ "\n" | "\r" }
+multispace = _{ WHITESPACE* }
+char       = {
+    !("\"" | "\\") ~ ANY
+    | "\\" ~ ("\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t")
+    | "\\" ~ ("u" ~ ASCII_HEX_DIGIT{4})
+}
+
+neg         = { "-" }
+dot         = _{ "." }
+comma       = _{ "," }
+quote       = _{ "\"" }
+dollar      = _{ "$" }
+backquote   = _{ "`" }
+left_paren  = _{ "(" }
+right_paren = _{ ")" }
+left_brace  = _{ "{" }
+right_brace = _{ "}" }
+semicolon  = _{ ";" }
+underscore = { "_" }
+
+// Misc
+ident_list = { ident ~ ( comma  ~ ident )* }
+expr_list  = { expr ~ ( comma  ~ expr )* }
+
+// Literals
+string = ${ quote ~ ( char )* ~ quote }
+float  = ${ digit+ ~ dot ~ digit+ }
+number = ${ neg? ~ digit+ ~ notdigit  }
+bool   = { "true" | "false" }
+
+literal = {
+  string
+  | float
+  | number
+  | bool
+}
+
+// Expr
+block      = { left_brace ~ ( item )* ~ right_brace }
+unit       = ${ left_paren ~ right_paren }
+ident      = ${ ( underscore | alpha ) ~ ( underscore | alpha | digit )* }
+exec_start = _{ dollar ~ backquote }
+exec       = ${ exec_start ~ ( !backquote ~ ANY )* ~ backquote }
+fn_call    = { ident ~ left_paren ~ expr_list? ~ right_paren }
+expr       = {
+  literal
+  | fn_call
+  | exec
+  | block
+  | unit
+  | ident
+}
+
+// Stmt
+stmt = { "let" ~  ident ~  "=" ~ expr ~ semicolon }
+
+// Item
+fn_def = { "fn" ~ ident ~ left_paren ~ ident_list? ~ right_paren ~ block }
+
+item = {
+  fn_def
+  | stmt
+  | (expr ~ semicolon)
+}
+
+main = {
+  SOI ~ item * ~ EOI
+}

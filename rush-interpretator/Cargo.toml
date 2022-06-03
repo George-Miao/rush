@@ -1,0 +1,16 @@
+[package]
+name    = "rush-interpretator"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+parser = { package = "rush-parser", path = "../rush-parser" }
+
+mod_use   = "0.2.0"
+thiserror = "1.0.31"
+sealed    = "0.4.0"
+
+[dev-dependencies]
+color-eyre = { version = "0.6.1", default-features = false }
