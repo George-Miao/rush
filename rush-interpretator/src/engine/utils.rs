@@ -1,15 +1,11 @@
-use std::{ops::Deref, rc::Rc, sync::RwLock};
+use std::{fmt::Display, ops::Deref, rc::Rc, sync::RwLock};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Shared<T: ?Sized>(Rc<T>);
 
-pub trait IntoShared {
-    fn shared(self) -> Shared<Self>;
-}
-
-impl<T> IntoShared for T {
-    fn shared(self) -> Shared<Self> {
-        Shared(Rc::new(self))
+impl<T> Shared<T> {
+    pub fn new(v: T) -> Self {
+        Self(Rc::new(v))
     }
 }
 
@@ -19,9 +15,9 @@ impl<T> Clone for Shared<T> {
     }
 }
 
-impl<T> Shared<T> {
-    pub fn new(v: T) -> Self {
-        Self(Rc::new(v))
+impl<T: Display> Display for Shared<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -36,6 +32,16 @@ impl<T: ?Sized> Deref for Shared<T> {
 impl<T> From<T> for Shared<T> {
     fn from(v: T) -> Self {
         Self::new(v)
+    }
+}
+
+pub trait IntoShared {
+    fn shared(self) -> Shared<Self>;
+}
+
+impl<T> IntoShared for T {
+    fn shared(self) -> Shared<Self> {
+        Shared(Rc::new(self))
     }
 }
 
@@ -78,5 +84,20 @@ impl<T> From<T> for Locked<T> {
 impl<T> From<T> for Shared<Locked<T>> {
     fn from(v: T) -> Self {
         Locked::new(v).into()
+    }
+}
+
+pub trait ToResult: Sized {
+    fn err<T>(self) -> Result<T, Self>;
+    fn ok<E>(self) -> Result<Self, E>;
+}
+
+impl<Ty> ToResult for Ty {
+    fn err<T>(self) -> Result<T, Self> {
+        Err(self)
+    }
+
+    fn ok<E>(self) -> Result<Self, E> {
+        Ok(self)
     }
 }

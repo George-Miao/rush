@@ -6,7 +6,7 @@ use std::{
 use parser::ast::{Literal, LiteralKind};
 use sealed::sealed;
 
-use crate::{FnRef, Locked, Shared};
+use crate::{FnRef, IntoShared, Locked, RuntimeError, RuntimeResult, Shared};
 
 #[allow(clippy::pedantic)]
 pub type SharedValue = Shared<Locked<Value>>;
@@ -29,10 +29,10 @@ impl SharedValue {
 #[must_use]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    Int(i128),
+    Int(i64),
     Float(f64),
     Bool(bool),
-    Str(String),
+    Str(Shared<String>),
     Fn(FnRef),
     Unit,
 }
@@ -42,12 +42,8 @@ impl Value {
         variant.into_value()
     }
 
-    pub fn new_shared(variant: impl Variant) -> Shared<Self> {
-        Self::new(variant).into()
-    }
-
     #[must_use]
-    pub fn share(self) -> Shared<Self> {
+    pub fn share(self) -> SharedValue {
         self.into()
     }
 
@@ -60,12 +56,38 @@ impl Value {
         }
     }
 
+    #[must_use]
+    pub fn ty_eq(&self, other: &Self) -> bool {
+        self.type_name() == other.type_name()
+    }
+
+    #[must_use]
+    pub fn ty_eq_name(&self, other: &Self) -> Option<&str> {
+        self.ty_eq(other).then_some(self.type_name())
+    }
+
     pub fn cast<T: Variant>(self) -> Result<T, Self> {
         T::from_value(self)
     }
 
     pub fn cast_ref<T: Variant>(&self) -> Result<&T, &Self> {
         T::from_value_ref(self)
+    }
+
+    pub fn rt_cast<T: Variant>(self, ident: &str) -> RuntimeResult<T> {
+        T::from_value(self).map_err(|t| RuntimeError::TypeError {
+            ident: ident.to_owned(),
+            expected: T::TYPE_NAME.to_owned(),
+            found: t.type_name().to_owned(),
+        })
+    }
+
+    pub fn rt_cast_ref<T: Variant>(&self, ident: &str) -> RuntimeResult<&T> {
+        T::from_value_ref(self).map_err(|t| RuntimeError::TypeError {
+            ident: ident.to_owned(),
+            expected: T::TYPE_NAME.to_owned(),
+            found: t.type_name().to_owned(),
+        })
     }
 }
 
@@ -74,8 +96,9 @@ impl From<Literal<'_>> for Value {
         match lit.kind {
             LiteralKind::Number(val) => Self::Int(val),
             LiteralKind::Bool(b) => Self::Bool(b),
-            LiteralKind::String(s) => Self::Str(s.to_owned()),
+            LiteralKind::String(s) => Self::Str(s.to_owned().shared()),
             LiteralKind::Float(f) => Self::Float(f),
+            l => unimplemented!("Literal type not implemented yet: {l:#?}"),
         }
     }
 }
@@ -86,7 +109,8 @@ impl From<&Literal<'_>> for Value {
             LiteralKind::Number(val) => Self::Int(*val),
             LiteralKind::Bool(b) => Self::Bool(*b),
             LiteralKind::Float(f) => Self::Float(*f),
-            LiteralKind::String(s) => Self::Str((*s).to_owned()),
+            LiteralKind::String(s) => Self::Str((*s).to_owned().shared()),
+            l => unimplemented!("Literal type not implemented yet: {l:#?}"),
         }
     }
 }
@@ -152,7 +176,7 @@ impl Variant for () {
 }
 
 macro_rules! impl_varaint {
-    ($t:ty, $variant:ident, $name:literal) => {
+    ($t:ty, $variant:ident, $name:literal $(, $extra_t:ty)* $(,)?) => {
         #[sealed]
         impl Variant for $t {
             const TYPE_NAME: &'static str = $name;
@@ -175,11 +199,22 @@ macro_rules! impl_varaint {
                 Value::$variant(self)
             }
         }
+
+        impl FromValue for $t {
+            fn from_value(ident: &str, value: Value) -> RuntimeResult<Self> {
+                value.rt_cast(ident)
+            }
+        }
     };
 }
 
-impl_varaint!(i128, Int, "int");
+impl_varaint!(i64, Int, "int");
 impl_varaint!(f64, Float, "float");
 impl_varaint!(bool, Bool, "bool");
-impl_varaint!(String, Str, "str");
+impl_varaint!(Shared<String>, Str, "str");
 impl_varaint!(FnRef, Fn, "fn");
+
+#[allow(clippy::module_name_repetitions)]
+pub trait FromValue: Sized {
+    fn from_value(ident: &str, value: Value) -> RuntimeResult<Self>;
+}

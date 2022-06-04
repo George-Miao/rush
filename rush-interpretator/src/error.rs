@@ -7,13 +7,13 @@ use thiserror::Error;
 use crate::Ref;
 
 #[derive(Error, Debug)]
-pub enum Error<'a> {
+pub enum Error<'src> {
     #[error("{0}")]
     Command(#[from] CommandError),
     #[error("{0}")]
     Runtime(#[from] RuntimeError),
     #[error("{0}")]
-    Parse(parser::Error<'a>),
+    Parse(parser::Error<'src>),
 }
 
 #[derive(Error, Debug)]
@@ -26,7 +26,7 @@ pub enum RuntimeError {
         expected: String,
         found: String,
     },
-    #[error("Expected `{expected}` arguments to call `{ident}`, found `{found}`")]
+    #[error("Expected {expected} arguments to call `{ident}`, found {found}")]
     ArgumentError {
         ident: String,
         expected: usize,
@@ -34,6 +34,8 @@ pub enum RuntimeError {
     },
     #[error("Ref not found: `{0}`")]
     NullRefError(Ref),
+    #[error("Max recursion depth exceeded")]
+    MaxRecursionExceeded,
 }
 
 #[derive(Error, Debug)]

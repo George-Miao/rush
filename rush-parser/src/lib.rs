@@ -13,7 +13,7 @@ pub use error::*;
 use crate::ast::Tree;
 
 #[derive(pest_derive::Parser)]
-#[grammar = "pest/rush.pest"]
+#[grammar = "../../pest/rush.pest"]
 pub struct RushParser;
 
 pub fn parse(input: &str) -> Result<Tree<'_>> {
@@ -21,4 +21,10 @@ pub fn parse(input: &str) -> Result<Tree<'_>> {
     let tree = Tree::try_from(res)?;
 
     Ok(tree)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Spanned<'str, T> {
+    pub span: pest::Span<'str>,
+    pub value: T,
 }

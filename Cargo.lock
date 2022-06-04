@@ -290,7 +290,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rush-interpretator"
+name = "rush-interpreter"
 version = "0.1.0"
 dependencies = [
  "color-eyre",

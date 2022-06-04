@@ -1,109 +1,173 @@
-use std::{fmt, hash::Hash};
+use std::{hash::Hash, marker::PhantomData};
 
 use pest::Span;
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Tree<'a> {
-    pub span: Span<'a>,
-    pub items: Vec<Item<'a>>,
+pub struct Tree<'src> {
+    pub span: Span<'src>,
+    pub items: Vec<Item<'src>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Item<'a> {
-    pub span: Span<'a>,
-    pub kind: ItemKind<'a>,
+pub struct Item<'src> {
+    pub span: Span<'src>,
+    pub kind: ItemKind<'src>,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum ItemKind<'src> {
+    FnDef(FnDef<'src>),
+    Stmt(Stmt<'src>),
+    Assign(Assign<'src>),
+    If(If<'src>),
+    For(For<'src>),
+    While(While<'src>),
+    Expr(Expr<'src>),
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub enum ItemKind<'a> {
-    Expr(Expr<'a>),
-    Stmt(Stmt<'a>),
-    FnDef(FnDef<'a>),
+pub struct Stmt<'src> {
+    pub span: Span<'src>,
+    pub ident: Ident<'src>,
+    pub expr: Expr<'src>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Stmt<'a> {
-    pub span: Span<'a>,
-    pub ident: Ident<'a>,
-    pub expr: Expr<'a>,
+pub struct FnDef<'src> {
+    pub span: Span<'src>,
+    pub ident: Ident<'src>,
+    pub params: Vec<Ident<'src>>,
+    pub body: Block<'src>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct FnDef<'a> {
-    pub span: Span<'a>,
-    pub ident: Ident<'a>,
-    pub params: Vec<Ident<'a>>,
-    pub body: Block<'a>,
+pub struct If<'src> {
+    pub span: Span<'src>,
+    pub cond: Expr<'src>,
+    pub then_block: Block<'src>,
+    pub else_block: Option<Block<'src>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Expr<'a> {
-    pub kind: ExprKind<'a>,
-    pub span: Span<'a>,
+pub struct For<'src> {
+    pub span: Span<'src>,
+    pub ident: Ident<'src>,
+    pub expr: Expr<'src>,
+    pub block: Block<'src>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub enum ExprKind<'a> {
-    Ident(Ident<'a>),
-    Literal(Literal<'a>),
-    FnCall(FnCall<'a>),
-    Exec(Exec<'a>),
-    Block(Block<'a>),
+pub struct While<'src> {
+    pub span: Span<'src>,
+    pub expr: Expr<'src>,
+    pub block: Block<'src>,
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct Expr<'src> {
+    pub kind: ExprKind<'src>,
+    pub span: Span<'src>,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum ExprKind<'src> {
+    Ident(Ident<'src>),
+    Literal(Literal<'src>),
+    FnCall(FnCall<'src>),
+    Exec(Exec<'src>),
+    Block(Block<'src>),
+    BinOp(BinOpExpr<'src>),
+    UnOp(UnOpExpr<'src>),
     Unit,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Ident<'a> {
-    pub name: &'a str,
-    pub span: Span<'a>,
-}
-
-impl fmt::Display for Ident<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Ident({})", self.name)
-    }
+pub struct Ident<'src> {
+    pub name: &'src str,
+    pub span: Span<'src>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct FnCall<'a> {
-    pub ident: Ident<'a>,
-    pub args: Vec<Expr<'a>>,
-    pub span: Span<'a>,
+pub struct FnCall<'src> {
+    pub ident: Ident<'src>,
+    pub args: Vec<Expr<'src>>,
+    pub span: Span<'src>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Exec<'a> {
-    pub span: Span<'a>,
-    pub cmd: &'a str,
+pub struct Exec<'src> {
+    pub span: Span<'src>,
+    pub cmd: &'src str,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Block<'a> {
-    pub span: Span<'a>,
-    pub items: Vec<Item<'a>>,
+pub struct Block<'src> {
+    pub span: Span<'src>,
+    pub items: Vec<Item<'src>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash)]
-pub struct Literal<'a> {
-    pub kind: LiteralKind<'a>,
-    pub span: Span<'a>,
+pub struct Literal<'src> {
+    pub kind: LiteralKind<'src>,
+    pub span: Span<'src>,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq)]
-pub enum LiteralKind<'a> {
-    String(&'a str),
+pub enum LiteralKind<'src> {
+    String(&'src str),
     Bool(bool),
-    Number(i128),
+    Number(i64),
     Float(f64),
 }
 
-impl Hash for LiteralKind<'_> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match self {
-            LiteralKind::String(s) => s.hash(state),
-            LiteralKind::Bool(b) => b.hash(state),
-            LiteralKind::Number(n) => n.hash(state),
-            LiteralKind::Float(f) => (*f as i64).hash(state),
-        }
-    }
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum BinOpKind<'src> {
+    __Marker(PhantomData<&'src ()>),
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Eq,
+    Neq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub enum UnOpKind {
+    Neg,
+    Not,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct BinOpExpr<'src> {
+    pub left: Box<Expr<'src>>,
+    pub right: Box<Expr<'src>>,
+    pub kind: BinOpKind<'src>,
+    pub span: Span<'src>,
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct UnOpExpr<'src> {
+    pub expr: Box<Expr<'src>>,
+    pub kind: UnOpKind,
+    pub span: Span<'src>,
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct Assign<'src> {
+    pub span: Span<'src>,
+    pub ident: Ident<'src>,
+    pub expr: Expr<'src>,
 }

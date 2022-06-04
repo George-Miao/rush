@@ -1,7 +1,8 @@
 [package]
-name    = "rush-interpretator"
-version = "0.1.0"
-edition = "2021"
+name        = "rush-interpreter"
+default-run = "rush"
+version     = "0.1.0"
+edition     = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,5 +13,12 @@ mod_use   = "0.2.0"
 thiserror = "1.0.31"
 sealed    = "0.4.0"
 
-[dev-dependencies]
-color-eyre = { version = "0.6.1", default-features = false }
+color-eyre = { version = "0.6.1", default-features = false, optional = true }
+
+[features]
+bin = ["dep:color-eyre"]
+
+[[bin]]
+name              = "rush"
+path              = "src/main.rs"
+required-features = ["bin"]
