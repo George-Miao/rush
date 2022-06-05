@@ -8,7 +8,7 @@ pub enum Error<'src> {
     Pest(#[from] pest::error::Error<Rule>),
     #[error("Tree error: expect {expect:?}, found {found:?}, at {span:?}")]
     TreeError {
-        expect: &'src [Rule],
+        expect: Vec<Rule>,
         found: Rule,
         span: Span<'src>,
     },

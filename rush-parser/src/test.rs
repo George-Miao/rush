@@ -203,20 +203,11 @@ fn test_loop() {
 
 #[test]
 fn test_some() {
-    let res = RushParser::parse(
-        Rule::item,
-        "if a == b {
-        while true {
-            print(a);
-        }
-    } else {
-        exit(b);
-    }",
-    )
-    .unwrap()
-    .next()
-    .unwrap();
+    let res = RushParser::parse(Rule::fn_def, "fntest() {}")
+        .unwrap()
+        .next()
+        .unwrap();
 
-    let res = Item::try_from(res).unwrap();
+    let res = FnDef::try_from(res).unwrap();
     println!("{:#?}", res);
 }

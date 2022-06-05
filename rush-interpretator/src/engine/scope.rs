@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::{hash_map::DefaultHasher, BTreeMap as Map},
     fmt::Display,
     hash::{Hash, Hasher},
     ops::Deref,
@@ -16,33 +16,28 @@ use crate::{
 #[must_use]
 pub struct Scope<'a> {
     name: String,
-    depth: usize,
-    fns: HashMap<FnRef, Shared<Callable<'a>>>,
-    vars: Vec<Variable>,
+    fns: Map<FnRef, Shared<Callable<'a>>>,
+    vars: Map<String, Variable>,
 }
 
 impl<'a> Scope<'a> {
-    pub fn new(name: impl Into<String>, depth: usize) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
+        let name = name.into();
         Self {
-            depth,
-            name: name.into(),
-            fns: HashMap::new(),
-            vars: vec![],
+            name,
+            fns: Map::new(),
+            vars: Map::new(),
         }
     }
 
+    pub fn clear(&mut self, name: impl Into<String>) {
+        self.fns.clear();
+        self.vars.clear();
+        self.name = name.into();
+    }
+
     pub fn new_global() -> Self {
-        Self::new("global", 0)
-    }
-
-    #[must_use]
-    pub const fn depth(&self) -> usize {
-        self.depth
-    }
-
-    #[must_use]
-    pub const fn is_global(&self) -> bool {
-        self.depth == 0
+        Self::new("global")
     }
 
     pub fn register_script_fn(&mut self, def: FnDef<'a>) {
@@ -57,7 +52,7 @@ impl<'a> Scope<'a> {
             .insert(fn_ref, Callable::script(def, hash).shared());
     }
 
-    pub fn register_native_fn(&mut self, name: impl Into<String>, func: impl ExternalFn) {
+    pub fn register_external_fn(&mut self, name: impl Into<String>, func: impl ExternalFn) {
         let name = name.into();
         let fn_ref = FnRef::new(Self::new_ref());
         let fn_ptr = Callable::native(func, &name).shared();
@@ -65,10 +60,22 @@ impl<'a> Scope<'a> {
         self.fns.insert(fn_ref, fn_ptr);
     }
 
+    pub fn register_boxed_external_fn(
+        &mut self,
+        name: impl Into<String>,
+        func: Box<dyn ExternalFn>,
+    ) {
+        let name = name.into();
+        let fn_ref = FnRef::new(Self::new_ref());
+        let fn_ptr = Callable::native_boxed(func, &name).shared();
+        self.new_var(name, Value::new(fn_ref));
+        self.fns.insert(fn_ref, fn_ptr);
+    }
+
     pub fn new_var(&mut self, name: impl Into<String>, val: impl Into<Value>) -> Ref {
         let name = name.into();
         let ret = Self::new_ref();
-        self.vars.push(Variable::new(name, ret, val));
+        self.vars.insert(name, Variable::new(ret, val));
         ret
     }
 
@@ -79,24 +86,22 @@ impl<'a> Scope<'a> {
             .ok_or_else(|| RuntimeError::NullRefError(*fn_ref.deref()))
     }
 
-    pub fn get(&self, val_ref: &Ref) -> RuntimeResult<&Variable> {
+    pub fn search(&self, val_ref: &Ref) -> RuntimeResult<&Variable> {
         self.vars
-            .iter()
+            .values()
             .find(|var| var.ref_eq(val_ref))
             .ok_or(RuntimeError::NullRefError(*val_ref))
     }
 
-    pub fn search(&self, name: &str) -> RuntimeResult<&Variable> {
+    pub fn get(&self, name: &str) -> RuntimeResult<&Variable> {
         self.vars
-            .iter()
-            .find(|var| var.name_eq(name))
+            .get(name)
             .ok_or_else(|| RuntimeError::IdentNotFound(name.to_string()))
     }
 
-    pub fn search_mut(&mut self, name: &str) -> RuntimeResult<&mut Variable> {
+    pub fn get_mut(&mut self, name: &str) -> RuntimeResult<&mut Variable> {
         self.vars
-            .iter_mut()
-            .find(|var| var.name_eq(name))
+            .get_mut(name)
             .ok_or_else(|| RuntimeError::IdentNotFound(name.to_string()))
     }
 
@@ -108,6 +113,6 @@ impl<'a> Scope<'a> {
 
 impl Display for Scope<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Scope({}, L{})", self.name, self.depth)
+        write!(f, "Scope({})", self.name)
     }
 }

@@ -1,40 +1,26 @@
-use std::{iter::zip, process::Command};
+use std::{collections::HashMap, process::Command};
 
-use parser::ast::{BinOpExpr, Block, Expr, ExprKind, FnCall, If, Item, ItemKind, UnOpKind, While};
+use parser::{
+    ast::{BinOpExpr, Block, Expr, ExprKind, FnCall, If, Item, ItemKind, UnOpKind, While},
+    parse,
+};
 
 use crate::{CommandError, CommandResult, Error, Result, RuntimeError, RuntimeResult};
 
-mod_use::mod_use![value, utils, fn_ptr, scope, var, refs];
+mod_use::mod_use![value, utils, scope, var, refs, func, module];
 
 const MAX_DEPTH: usize = 1 << 14;
 
 #[must_use]
-pub struct Engine<'src> {
-    scopes: Vec<Scope<'src>>,
+pub struct Engine {
+    fns: HashMap<String, Box<dyn ExternalFn>>,
 }
 
-impl<'src> Engine<'src> {
+impl Engine {
     pub fn new() -> Self {
         Self {
-            scopes: vec![Scope::new_global()],
+            fns: HashMap::new(),
         }
-    }
-
-    pub fn execute(&mut self, src: &'src str) -> Result<'src, ()> {
-        let tree = parser::parse(src).map_err(Error::Parse)?;
-
-        // hoist
-        for item in &tree.items {
-            if let ItemKind::FnDef(fn_def) = &item.kind {
-                self.current_mut().register_script_fn(fn_def.clone());
-            }
-        }
-
-        for item in &tree.items {
-            drop(self.eval_item(item)?);
-        }
-
-        Ok(())
     }
 
     pub fn with_fn<Param, FnPtr, Func>(self, name: impl Into<String>, func: Func) -> Self
@@ -46,8 +32,52 @@ impl<'src> Engine<'src> {
     }
 
     pub fn with_fn_raw(mut self, name: impl Into<String>, func: impl ExternalFn) -> Self {
-        self.global().register_native_fn(name.into(), func);
+        self.fns.insert(name.into(), Box::new(func));
         self
+    }
+
+    pub fn execute(self, src: &str) -> Result<'_, ()> {
+        let tree = parse(src).map_err(Error::Parse)?;
+        let mut ctx = Context::new();
+
+        let global = ctx.global();
+
+        for (name, func) in self.fns {
+            global.register_boxed_external_fn(name, func);
+        }
+
+        // hoist
+        for item in &tree.items {
+            if let ItemKind::FnDef(fn_def) = &item.kind {
+                ctx.current_mut().register_script_fn(fn_def.clone());
+            }
+        }
+
+        for item in &tree.items {
+            drop(ctx.eval_item(item)?);
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[must_use]
+pub struct Context<'src> {
+    scopes: Vec<Scope<'src>>,
+    depth: usize,
+}
+
+impl<'src> Context<'src> {
+    pub fn new() -> Self {
+        let mut scopes = Vec::with_capacity(8);
+        scopes.push(Scope::new_global());
+        Self { scopes, depth: 0 }
     }
 
     fn eval_item(&mut self, item: &Item<'src>) -> Result<'src, Value> {
@@ -217,37 +247,7 @@ impl<'src> Engine<'src> {
                 expected: FnRef::TYPE_NAME.to_owned(),
                 found: e.type_name().to_owned(),
             })?;
-        match &*self.get_fn(fn_ref)? {
-            Callable::Native(native_fn) => {
-                let args = fn_call
-                    .args
-                    .iter()
-                    .map(|arg| self.eval_expr(arg))
-                    .collect::<Result<Vec<_>>>()?;
-                native_fn.call(args).map(Into::into).map_err(Into::into)
-            }
-            Callable::Script(script_fn) => {
-                let def = &script_fn.def;
-                let args = &fn_call.args;
-                if def.params.len() != args.len() {
-                    Err(RuntimeError::ArgumentError {
-                        ident: def.ident.name.to_owned(),
-                        expected: def.params.len(),
-                        found: args.len(),
-                    })?;
-                }
-                self.enter_scope(name)?;
-                for (param, arg) in zip(&def.params, args) {
-                    let arg_val = self.eval_expr(arg)?;
-                    self.current_mut().new_var(param.name, arg_val);
-                }
-                for item in &script_fn.def.body.items {
-                    drop(self.eval_item(item)?);
-                }
-                drop(self.pop_scope());
-                Ok(Value::Unit)
-            }
-        }
+        self.get_fn(fn_ref)?.call(self, fn_call)
     }
 
     fn eval_block(&mut self, block: &Block<'src>) -> Result<'src, Value> {
@@ -255,43 +255,53 @@ impl<'src> Engine<'src> {
         for item in &block.items {
             drop(self.eval_item(item)?);
         }
-        drop(self.pop_scope());
+        self.pop_scope();
         Ok(Value::Unit)
     }
 
     #[inline]
     fn global(&mut self) -> &mut Scope<'src> {
-        self.scopes.first_mut().unwrap()
+        &mut self.scopes[0]
     }
 
     #[inline]
     fn current(&self) -> &Scope<'src> {
-        self.scopes.last().unwrap()
+        &self.scopes[self.depth]
     }
 
     #[inline]
     fn current_mut(&mut self) -> &mut Scope<'src> {
-        self.scopes.last_mut().unwrap()
+        &mut self.scopes[self.depth]
     }
 
     #[inline]
     fn enter_scope(&mut self, name: impl Into<String>) -> RuntimeResult<()> {
-        if self.current().depth() == MAX_DEPTH {
+        if self.depth == MAX_DEPTH {
             return Err(RuntimeError::MaxRecursionExceeded);
         }
-        let scope = Scope::new(name, self.current().depth() + 1);
-        self.scopes.push(scope);
+
+        let new = self.depth + 1;
+
+        if self.scopes.len() <= new {
+            let scope = Scope::new(name);
+            self.scopes.push(scope);
+        } else {
+            self.scopes[new].clear(name);
+        }
+
+        self.depth += 1;
+
         Ok(())
     }
 
     #[inline]
-    fn pop_scope(&mut self) -> Scope {
-        self.scopes.pop().unwrap()
+    fn pop_scope(&mut self) {
+        self.depth -= 1;
     }
 
     fn _get(&self, ref_: Ref) -> RuntimeResult<&Variable> {
         for scope in self.scopes.iter().rev() {
-            if let Ok(val) = scope.get(&ref_) {
+            if let Ok(val) = scope.search(&ref_) {
                 return Ok(val);
             }
         }
@@ -308,25 +318,23 @@ impl<'src> Engine<'src> {
     }
 
     fn search(&self, name: &str) -> RuntimeResult<&Variable> {
-        for scope in self.scopes.iter().rev() {
-            if let Ok(val) = scope.search(name) {
-                return Ok(val);
-            }
-        }
-        Err(RuntimeError::IdentNotFound(name.to_string()))
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|x| x.get(name).ok())
+            .ok_or_else(|| RuntimeError::IdentNotFound(name.to_owned()))
     }
 
     fn search_mut(&mut self, name: &str) -> RuntimeResult<&mut Variable> {
-        for scope in self.scopes.iter_mut().rev() {
-            if let Ok(val) = scope.search_mut(name) {
-                return Ok(val);
-            }
-        }
-        Err(RuntimeError::IdentNotFound(name.to_string()))
+        self.scopes
+            .iter_mut()
+            .rev()
+            .find_map(|x| x.get_mut(name).ok())
+            .ok_or_else(|| RuntimeError::IdentNotFound(name.to_owned()))
     }
 }
 
-impl<'a> Default for Engine<'a> {
+impl<'a> Default for Context<'a> {
     fn default() -> Self {
         Self::new()
     }

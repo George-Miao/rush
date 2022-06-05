@@ -88,10 +88,11 @@ stmt = { "let" ~  ident ~  "=" ~ expr ~ semicolon }
 
 // Item
 assign     = { ident ~ "=" ~ expr ~ semicolon }
-fn_def     = { "fn" ~ ident ~ left_paren ~ ( ident_list )? ~ right_paren ~ block }
-if_loop    = { "if" ~ expr ~ block ~ ( "else" ~ block )? }
-for_loop   = { "for" ~ ident ~ "in" ~ expr ~ block }
-while_loop = { "while" ~ expr ~ block }
+fn_def     = { "fn" ~ multispace ~ ident ~ left_paren ~ ( ident_list )? ~ right_paren ~ block }
+if_loop    = { "if" ~ multispace ~ expr ~ block ~ ( "else" ~ block )? }
+for_loop   = { "for" ~multispace ~ ident ~ multispace ~ "in" ~ multispace ~ expr ~ block }
+while_loop = { "while" ~ multispace ~ expr ~ block }
+use_item   = { "use" ~ multispace ~ident ~ semicolon }
 
 item = {
   fn_def

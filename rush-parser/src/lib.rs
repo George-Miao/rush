@@ -16,7 +16,7 @@ use crate::ast::Tree;
 #[grammar = "../../pest/rush.pest"]
 pub struct RushParser;
 
-pub fn parse(input: &str) -> Result<Tree<'_>> {
+pub fn parse<'src>(input: &'src str) -> Result<'src, Tree<'src>> {
     let res = RushParser::parse(Rule::main, input)?.next().unwrap();
     let tree = Tree::try_from(res)?;
 

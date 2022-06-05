@@ -3,7 +3,7 @@ use std::{
     ops::{Add, AddAssign},
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ref(usize);
 
 impl From<usize> for Ref {

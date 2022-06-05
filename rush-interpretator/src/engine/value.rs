@@ -1,30 +1,9 @@
-use std::{
-    fmt::{self, Debug},
-    sync::{RwLockReadGuard, RwLockWriteGuard},
-};
+use std::fmt::{self, Debug};
 
 use parser::ast::{Literal, LiteralKind};
 use sealed::sealed;
 
-use crate::{FnRef, IntoShared, Locked, RuntimeError, RuntimeResult, Shared};
-
-#[allow(clippy::pedantic)]
-pub type SharedValue = Shared<Locked<Value>>;
-
-impl SharedValue {
-    #[must_use]
-    pub fn new_shared(v: Value) -> Self {
-        Self::new(Locked::new(v))
-    }
-
-    pub fn get(&self) -> RwLockReadGuard<Value> {
-        Locked::get(self)
-    }
-
-    pub fn get_mut(&self) -> RwLockWriteGuard<Value> {
-        Locked::get_mut(self)
-    }
-}
+use crate::{FnRef, IntoShared, RuntimeError, RuntimeResult, Shared};
 
 #[must_use]
 #[derive(Debug, Clone, PartialEq)]
@@ -40,11 +19,6 @@ pub enum Value {
 impl Value {
     pub fn new(variant: impl Variant) -> Self {
         variant.into_value()
-    }
-
-    #[must_use]
-    pub fn share(self) -> SharedValue {
-        self.into()
     }
 
     #[must_use]
@@ -197,6 +171,12 @@ macro_rules! impl_varaint {
 
             fn into_value(self) -> Value {
                 Value::$variant(self)
+            }
+        }
+
+        impl From<$t> for Value {
+            fn from(val: $t) -> Self {
+                Value::$variant(val)
             }
         }
 

@@ -47,7 +47,7 @@ macro_rules! ensure {
         let rule = $val.as_rule();
         if rule != Rule::$first $( && rule != Rule::$expect )* {
             return Err(Error::TreeError {
-                expect: &[Rule::$first, $( Rule::$expect, )*],
+                expect: vec![Rule::$first, $( Rule::$expect, )*],
                 found: $val.as_rule(),
                 span: $val.as_span(),
             });

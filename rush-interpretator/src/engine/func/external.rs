@@ -1,15 +1,9 @@
 use std::{
     fmt::{Debug, Display},
     marker::PhantomData,
-    ops::{Deref, DerefMut},
 };
 
-use parser::ast::{Expr, FnDef};
-
-use crate::{Locked, Ref, RuntimeResult, Value};
-
-pub type FnCallArg = Vec<Value>;
-pub type FnCallParam<'r, 'a> = &'r [Expr<'a>];
+use crate::{FnCallArg, Locked, RuntimeResult, Value};
 
 pub trait ExternalFn: 'static {
     fn call(&mut self, name: &str, args: FnCallArg) -> RuntimeResult<Value>;
@@ -97,97 +91,6 @@ mod impl_fns_without_fmt {
     impl_fn!(24, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X);
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[must_use]
-pub struct FnRef {
-    fn_ref: Ref,
-}
-
-impl FnRef {
-    pub const fn new(fn_ref: Ref) -> Self {
-        Self { fn_ref }
-    }
-
-    #[must_use]
-    pub const fn inner(&self) -> Ref {
-        self.fn_ref
-    }
-}
-
-impl From<Ref> for FnRef {
-    fn from(ref_: Ref) -> Self {
-        Self { fn_ref: ref_ }
-    }
-}
-
-impl Display for FnRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // write!(f, "FnRef({}, {})", self.fn_ref, self)
-        write!(f, "FnRef({})", self.fn_ref)
-    }
-}
-
-impl Deref for FnRef {
-    type Target = Ref;
-
-    fn deref(&self) -> &Ref {
-        &self.fn_ref
-    }
-}
-
-impl DerefMut for FnRef {
-    fn deref_mut(&mut self) -> &mut Ref {
-        &mut self.fn_ref
-    }
-}
-
-#[must_use]
-pub enum Callable<'a> {
-    Native(NativeFn),
-    Script(ScriptFn<'a>),
-}
-
-impl<'a> Callable<'a> {
-    pub fn native(ptr: impl ExternalFn, name: impl Into<String>) -> Self {
-        Self::Native(NativeFn::new(ptr, name.into()))
-    }
-
-    pub const fn script(def: FnDef<'a>, hash: u64) -> Self {
-        Self::Script(ScriptFn::new(def, hash))
-    }
-}
-
-impl From<NativeFn> for Callable<'_> {
-    fn from(native_fn: NativeFn) -> Self {
-        Self::Native(native_fn)
-    }
-}
-
-impl<'a> From<ScriptFn<'a>> for Callable<'a> {
-    fn from(script_fn: ScriptFn<'a>) -> Self {
-        Self::Script(script_fn)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Hash)]
-pub struct ScriptFn<'a> {
-    pub def: FnDef<'a>,
-    pub hash: u64,
-}
-
-impl<'a> ScriptFn<'a> {
-    #[must_use]
-    pub const fn new(def: FnDef<'a>, hash: u64) -> Self {
-        Self { def, hash }
-    }
-}
-
-impl Display for ScriptFn<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ScriptFn({})", self.def)
-    }
-}
-
 pub struct NativeFn {
     ptr: Locked<Box<dyn ExternalFn>>,
     name: String,
@@ -197,6 +100,13 @@ impl NativeFn {
     pub fn new(ptr: impl ExternalFn, name: impl Into<String>) -> Self {
         Self {
             ptr: Locked::new(Box::new(ptr)),
+            name: name.into(),
+        }
+    }
+
+    pub fn new_boxed(ptr: Box<dyn ExternalFn>, name: impl Into<String>) -> Self {
+        Self {
+            ptr: Locked::new(ptr),
             name: name.into(),
         }
     }
@@ -213,18 +123,21 @@ impl NativeFn {
 
 impl Display for NativeFn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "NativeFn({})", self.name())
+        write!(f, "NativeFn({})", self.name)
+    }
+}
+
+impl Debug for NativeFn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NativeFn")
+            .field("ptr", &"Box(dyn ExternalFn)")
+            .field("name", &self.name)
+            .finish()
     }
 }
 
 impl PartialEq for NativeFn {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
-    }
-}
-
-impl Debug for NativeFn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ExternalFn({})", self.name)
     }
 }
